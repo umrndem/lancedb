@@ -765,7 +765,6 @@ impl<S: HttpSend> RemoteTable<S> {
 
         // Map each Index variant to its wire type name and serializable params.
         // Auto is special-cased since it needs schema inspection.
-        let plugin_index_type;
         let (index_type_str, params) = match &index.index {
             Index::IvfFlat(p) => ("IVF_FLAT", Some(to_json(p)?)),
             Index::IvfPq(p) => ("IVF_PQ", Some(to_json(p)?)),
@@ -781,10 +780,11 @@ impl<S: HttpSend> RemoteTable<S> {
             Index::NGram(p) => ("NGRAM", Some(to_json(p)?)),
             Index::BloomFilter(p) => ("BLOOM_FILTER", Some(to_json(p)?)),
             Index::RTree(p) => ("RTREE", Some(to_json(p)?)),
+            // Keep generic plugin requests distinct from built-in index handling.
             // The plugin's params are nested below rather than flattened.
             Index::Plugin(p) => {
-                plugin_index_type = p.index_type().to_uppercase();
-                (plugin_index_type.as_str(), None)
+                body["plugin_type"] = p.index_type().to_uppercase().into();
+                ("PLUGIN", None)
             }
             Index::FTS(p) => {
                 validate_fts_field(&field)?;
@@ -9020,8 +9020,8 @@ mod tests {
             .unwrap();
     }
 
-    /// A plugin index sends the upper-cased plugin name, and its params under
-    /// one `params` key, so a param named like a request field cannot replace it.
+    /// Generic index requests use `PLUGIN` and a separate `plugin_type`. Params
+    /// stay nested so they cannot replace routing fields or request metadata.
     #[tokio::test]
     async fn test_create_plugin_index_nests_params() {
         use crate::index::scalar::PluginIndexBuilder;
@@ -9031,14 +9031,16 @@ mod tests {
             "name": "not_my_index",
             "replace": true,
             "index_type": "BTREE",
+            "plugin_type": "ZONEMAP",
+            "branch": "not_my_branch",
             "keys": ["label", "confidence"],
         });
         let cases = [
             (
-                PluginIndexBuilder::new("zonemap").unwrap(),
+                PluginIndexBuilder::new(" ZoneMap ").unwrap(),
                 None,
                 true,
-                json!({"column": "a", "index_type": "ZONEMAP"}),
+                json!({"column": "a", "index_type": "PLUGIN", "plugin_type": "ZONEMAP"}),
             ),
             (
                 PluginIndexBuilder::new("BloomFilter")
@@ -9049,7 +9051,8 @@ mod tests {
                 true,
                 json!({
                     "column": "a",
-                    "index_type": "BLOOMFILTER",
+                    "index_type": "PLUGIN",
+                    "plugin_type": "BLOOMFILTER",
                     "params": {"number_of_items": 4096},
                 }),
             ),
@@ -9062,7 +9065,8 @@ mod tests {
                 false,
                 json!({
                     "column": "a",
-                    "index_type": "LISTELEMENT",
+                    "index_type": "PLUGIN",
+                    "plugin_type": "LISTELEMENT",
                     "name": "my_index",
                     "replace": false,
                     "params": colliding_params,
@@ -9075,7 +9079,7 @@ mod tests {
                     .unwrap(),
                 None,
                 true,
-                json!({"column": "a", "index_type": "ZONEMAP", "params": {}}),
+                json!({"column": "a", "index_type": "PLUGIN", "plugin_type": "ZONEMAP", "params": {}}),
             ),
         ];
 
