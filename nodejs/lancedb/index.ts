@@ -174,7 +174,7 @@ export {
   AddDataOptions,
   UpdateOptions,
   OptimizeOptions,
-  CompactionOptions,
+  OptimizeDataOptions,
   PrewarmDataOptions,
   Version,
   WriteProgress,
@@ -666,7 +666,7 @@ export {
 
 export { Listing, ListingOptions } from "./listing";
 
-export type { CompactionResult } from "./compaction";
+export type { OptimizeResult } from "./optimize";
 
 export type {
   PrewarmDataPlan,

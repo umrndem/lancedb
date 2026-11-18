@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-FileCopyrightText: Copyright The LanceDB Authors
 
-import { CompactionResult, decodeCompactionResult } from "./compaction";
+import { OptimizeResult, decodeOptimizeResult } from "./optimize";
 import {
   PrewarmDataPlan,
   PrewarmDataResult,
@@ -184,7 +184,7 @@ export interface PrewarmDataOptions {
 }
 
 /** Per-invocation compaction settings. Values must be safe integers. */
-export interface CompactionOptions {
+export interface OptimizeDataOptions {
   /** Positive target rows per output fragment; also affects candidate selection. */
   targetRowsPerFragment?: number;
   /** Positive live-source-row budget across whole tasks; an oversized first task can produce no work. */
@@ -207,12 +207,12 @@ export interface OptimizeOptions {
    * Remote tables require a server supporting these SQL options; settings do
    * not change table policy. This is not a runtime or total-memory limit.
    * @example
-   * await tbl.optimize({ compactionOptions: {
+   * await tbl.optimize({ dataOptions: {
    *   targetRowsPerFragment: 1000, maxSourceRows: 5000,
    *   ioBufferSize: 64 * 1024 * 1024, batchSize: 128,
    * } });
    */
-  compactionOptions?: CompactionOptions;
+  dataOptions?: OptimizeDataOptions;
   /**
    * If set then all versions older than the given date
    * be removed.  The current version will never be removed.
@@ -1349,7 +1349,7 @@ export abstract class Table {
    * Waiting tracks the rewrite itself and returns actual row/file statistics.
    * Missing result payloads are errors; older workers can omit file counts.
    * Status, progress, events and cancellation reuse the generic HTTP job APIs.
-   * Reopen with db.openJob<CompactionResult>(job.id!). A wait timeout does not cancel work.
+   * Reopen with db.openJob<OptimizeResult>(job.id!). A wait timeout does not cancel work.
    *
    * @example
    * const job = await table.optimizeAsync({ targetRowsPerFragment: 1000 });
@@ -1357,8 +1357,8 @@ export abstract class Table {
    * console.log(result.rowsSucceeded, result.fragmentsRemoved);
    */
   async optimizeAsync(
-    _options?: CompactionOptions,
-  ): Promise<Job<CompactionResult>> {
+    _options?: OptimizeDataOptions,
+  ): Promise<Job<OptimizeResult>> {
     throw new Error("compaction jobs are only supported on remote tables");
   }
 
@@ -1385,8 +1385,8 @@ export abstract class Table {
    * skipped there instead of being attempted, so this call resolves
    * successfully with placeholder statistics (not completed work) once the
    * compaction job has been submitted; it does not wait for that job to finish.
-   * `compactionOptions` can tune the four per-job settings documented in
-   * {@link CompactionOptions}. Older-server errors are propagated without
+   * `dataOptions` can tune the four per-job settings documented in
+   * {@link OptimizeDataOptions}. Older-server errors are propagated without
    * retrying with the settings removed.
    */
   abstract optimize(options?: Partial<OptimizeOptions>): Promise<OptimizeStats>;
@@ -2077,17 +2077,17 @@ export class LocalTable extends Table {
   }
 
   async optimizeAsync(
-    options?: CompactionOptions,
-  ): Promise<Job<CompactionResult>> {
-    validateCompactionOptions(options);
+    options?: OptimizeDataOptions,
+  ): Promise<Job<OptimizeResult>> {
+    validateOptimizeDataOptions(options);
     return new Job(
       await this.inner.optimizeAsync(options),
-      decodeCompactionResult,
+      decodeOptimizeResult,
     );
   }
 
   async optimize(options?: Partial<OptimizeOptions>): Promise<OptimizeStats> {
-    validateCompactionOptions(options?.compactionOptions);
+    validateOptimizeOptions(options);
     if (options?.action !== undefined && options.action !== "rewrite_data") {
       throw new Error('action must be "rewrite_data" or undefined');
     }
@@ -2103,7 +2103,7 @@ export class LocalTable extends Table {
     return await this.inner.optimize(
       options?.cleanupOlderThan?.getTime(),
       options?.deleteUnverified,
-      options?.compactionOptions,
+      options?.dataOptions,
       options?.action,
     );
   }
@@ -2401,7 +2401,22 @@ function rowIdsToBigInts(rowIds: readonly (bigint | number)[]): bigint[] {
   });
 }
 
-function validateCompactionOptions(options?: CompactionOptions): void {
+function validateOptimizeOptions(options?: Partial<OptimizeOptions>): void {
+  const supported = new Set([
+    "action",
+    "dataOptions",
+    "cleanupOlderThan",
+    "deleteUnverified",
+  ]);
+  for (const key of Object.keys(options ?? {})) {
+    if (!supported.has(key)) {
+      throw new Error(`Unsupported Optimize option: ${key}`);
+    }
+  }
+  validateOptimizeDataOptions(options?.dataOptions);
+}
+
+function validateOptimizeDataOptions(options?: OptimizeDataOptions): void {
   // JavaScript callers can supply extra keys that TypeScript would reject.
   // Refuse them before the native binding can silently discard a work limit.
   const supported = new Set([
@@ -2412,7 +2427,7 @@ function validateCompactionOptions(options?: CompactionOptions): void {
   ]);
   for (const key of Object.keys(options ?? {})) {
     if (!supported.has(key)) {
-      throw new Error(`Unsupported compaction option: ${key}`);
+      throw new Error(`Unsupported Optimize data option: ${key}`);
     }
   }
 }
