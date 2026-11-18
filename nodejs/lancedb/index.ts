@@ -174,7 +174,6 @@ export {
   AddDataOptions,
   UpdateOptions,
   OptimizeOptions,
-  OptimizeDataOptions,
   PrewarmDataOptions,
   Version,
   WriteProgress,
