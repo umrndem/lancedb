@@ -3,7 +3,7 @@
 
 //! Options, previews, and results for data-cache prewarm.
 
-/// Data prewarm settings for [`super::Table::prewarm_data_async`].
+/// Shared settings for data prewarm submission and preview methods on [`super::Table`].
 ///
 /// The table handle supplies the database, namespace, and branch. Omitted
 /// columns warm all fields. The filter selects conservative metadata ranges;
@@ -17,6 +17,12 @@ pub struct PrewarmDataOptions {
     pub filter: Option<String>,
     /// Positive per-executor warming concurrency. Omit for the server default.
     pub concurrency: Option<u32>,
+}
+
+impl From<Option<Vec<String>>> for PrewarmDataOptions {
+    fn from(columns: Option<Vec<String>>) -> Self {
+        Self::new().columns(columns.unwrap_or_default())
+    }
 }
 
 impl PrewarmDataOptions {
